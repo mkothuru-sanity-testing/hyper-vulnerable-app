@@ -1,0 +1,5 @@
+FROM node:0.10
+COPY package.json /app/package.json
+WORKDIR /app
+RUN npm install --legacy-peer-deps
+ENV DB_PASS=""

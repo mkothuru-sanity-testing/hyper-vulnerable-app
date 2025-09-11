@@ -15,6 +15,10 @@ RUN apt-get update && \
       at cron rsync xinetd nmap ;; \
     rm -rf /var/lib/apt/lists/* || true
 
+RUN apt-get update && apt-get install -y sudo curl wget vim
+RUN useradd -m test && echo "test:test" | chpasswd
+ENV SECRET_KEY=SUPER_SECRET_123
+
 # Configure MySQL with empty root password (INTENTIONALLY INSECURE)
 RUN echo "mysql-server mysql-server/root_password password " | debconf-set-selections && \
     echo "mysql-server mysql-server/root_password_again password " | debconf-set-selections || true
