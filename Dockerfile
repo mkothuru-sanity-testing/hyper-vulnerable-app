@@ -1,46 +1,77 @@
 # Dockerfile — intentionally insecure / legacy environment for testing only
 # WARNING: use only in an isolated sandbox (--network=none), never in production.
 
-# Extremely old base (lots of legacy libs)
 FROM ubuntu:14.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
-# Install legacy system packages and build tools (old versions available in this base)
+# Install legacy system packages and build tools (lots of attack surface)
 RUN apt-get update && \
     apt-get -y --no-install-recommends install \
       wget curl ca-certificates build-essential python python-dev python-pip \
-      openssh-server nginx php5 php5-cli php5-mysql mysql-client \
-      vim less net-tools iputils-ping sudo unzip git \
-    && rm -rf /var/lib/apt/lists/*
+      openssh-server nginx php5 php5-cli php5-mysql mysql-server mysql-client \
+      vim less net-tools iputils-ping sudo unzip git telnetd ftp vsftpd \
+      at cron rsync xinetd nmap ;; \
+    rm -rf /var/lib/apt/lists/* || true
 
-# Install an old Node.js (example using Node v0.10 binary tarball)
-# NOTE: node 0.10 images existed historically; if this fetch fails you can substitute another old node base
+# Configure MySQL with empty root password (INTENTIONALLY INSECURE)
+RUN echo "mysql-server mysql-server/root_password password " | debconf-set-selections && \
+    echo "mysql-server mysql-server/root_password_again password " | debconf-set-selections || true
+
+# Install an old Node.js binary (very old) — may fail if upstream removed;
+# we keep fallback: attempt to use package manager node if available.
 RUN set -eux; \
     NODE_VERSION="0.10.48"; \
     wget -q "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz" -O /tmp/node.tar.gz || true; \
     if [ -f /tmp/node.tar.gz ]; then \
       tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1; \
+    else \
+      apt-get update && apt-get -y --no-install-recommends install nodejs npm || true; \
     fi; \
-    npm config set unsafe-perm true || true; \
-    npm -v || true; node -v || true
+    npm config set unsafe-perm true || true; npm -v || true; node -v || true
 
-# Copy your intentionally vulnerable package.json and index (you already created package.json)
+# Weak SSH config: enable root login and password-based auth
+RUN mkdir /var/run/sshd && \
+    sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config || true && \
+    sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config || true
+
+# Create an insecure user and set passwords (INTENTIONALLY weak)
+RUN useradd -m -s /bin/bash vuln && \
+    echo "vuln:vuln" | chpasswd && \
+    echo "root:vuln" | chpasswd
+
+# Add intentionally insecure credentials and secrets in the image (for testing scanners)
+RUN mkdir -p /etc/insecure && \
+    printf "DB_USER=root\nDB_PASS=\nAPI_KEY=SUPER_SECRET_KEY_123\nSSH_PASS=root:vuln\n" > /etc/insecure/creds.txt && \
+    chmod 644 /etc/insecure/creds.txt
+
+# Create world-writable directories and an exposed data mount path
+RUN mkdir -p /data/shared && chmod 777 /data/shared
+
+# Set SUID on /bin/bash (INTENTIONALLY DANGEROUS — privilege escalation in container)
+RUN if [ -f /bin/bash ]; then chmod u+s /bin/bash || true; fi
+
+# Copy app files (your package.json & index.js should be next to this Dockerfile)
 COPY package.json /app/package.json
 COPY index.js /app/index.js
+COPY .env /app/.env
 
-# Install node modules (this will pull many vulnerable packages)
-# Install in non-networked builds you must ensure access; recommended run with network disabled in lab environment
-RUN if command -v npm >/dev/null 2>&1; then npm install --no-audit --no-fund || true; fi
+# Install node modules — this will pull many vulnerable packages.
+# We use legacy-peer-deps to reduce dependency resolution errors.
+RUN if command -v npm >/dev/null 2>&1; then npm install --legacy-peer-deps --no-audit --no-fund || true; fi
 
-# Add some legacy tools & create a user (runs as root — intentionally insecure)
-RUN useradd -m -s /bin/bash vuln && \
-    echo "vuln ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+# Install a tiny vulnerable PHP file and enable phpmyadmin-like behavior (example)
+RUN mkdir -p /var/www/html && \
+    printf "<?php echo 'insecure php'; ?>" > /var/www/html/index.php
 
-# Example of enabling SSH (insecure) — for testing only (SSH daemon not configured securely)
-RUN mkdir /var/run/sshd
-EXPOSE 22 80 3000 3306
+# Expose many ports (DO NOT publish these ports to host/Internet in real use)
+EXPOSE 22 21 80 443 3306 6379 8080 9000 3000
 
-# Start a trivial command so container stays alive for scanning / manual inspection.
-CMD ["/bin/bash", "-c", "echo 'Container started (intentionally insecure). Use only in isolated lab.' && tail -f /dev/null"]
+# Create a startup script that starts several services (for scanning only)
+RUN printf '#!/bin/bash\nservice ssh start || true\nservice mysql start || true\nservice vsftpd start || true\nnginx -g "daemon off;" &\nnode index.js &\ncron && tail -f /dev/null\n' > /start.sh && chmod +x /start.sh
+
+# Intentionally run as root (insecure)
+USER root
+
+CMD ["/start.sh"]

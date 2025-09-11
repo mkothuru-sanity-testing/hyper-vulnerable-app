@@ -1,0 +1,36 @@
+version: "3.2"
+services:
+  app:
+    build: .
+    container_name: hyper_vuln_app
+    # DO NOT publish ports to host unless in an air-gapped VM
+    # ports:
+    #   - "3000:3000"
+    #   - "80:80"
+    networks:
+      - isolated_net
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASS=
+    restart: "no"
+
+  db:
+    image: mysql:5.5
+    container_name: hyper_vuln_db
+    environment:
+      MYSQL_ROOT_PASSWORD: ""
+    # DO NOT publish MySQL port to host in real use
+    networks:
+      - isolated_net
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: "no"
+
+networks:
+  isolated_net:
+    driver: bridge
+
+volumes:
+  db_data:
