@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bad
+  template:
+    metadata:
+      labels:
+        app: bad
+    spec:
+      containers:
+        - name: bad-container
+          image: nginx:latest
+          securityContext:
+            runAsUser: 0             # ❌ Runs as root
+            privileged: true         # ❌ Privileged container
+          env:
+            - name: DB_PASSWORD
+              value: "hardcodedpassword"  # ❌ Plaintext secret
+          volumeMounts:
+            - name: docker-socket
+              mountPath: /var/run/docker.sock  # ❌ Dangerous mount
+      volumes:
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock

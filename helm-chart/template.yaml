@@ -1,0 +1,17 @@
+Resources:
+  BadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: insecure-bucket
+      AccessControl: PublicRead  # ❌ Public bucket
+
+  BadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: bad-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: sts:AssumeRole   # ❌ Wildcard principal
