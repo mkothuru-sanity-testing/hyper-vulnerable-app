@@ -1,6 +1,6 @@
 # Hyper Vulnerable SCA and IaC Repo
 
-> ⚠️ WARNING: Do not use this in production or on any network-connected machine.dcxcvfdsd
+> ⚠️ WARNING: Do not use this in production or on any network-connected machine.d
 > Only use in isolated sandbox / VM / lab.
 
 ## Contentsd
